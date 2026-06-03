@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "tests"]
+
+[workspace.dependencies]
+# we depend on bevy directly instead of the subcrates
+# this makes it easier to simply copy the `crates` dir from here into any project to include it without having to specify every `bevy_*` crate in `workspace.dependencies`
+# this is because most of this crate is things that might end up being modified per game, so it doesn't make sense to publish it to `crates.io`
+# (also less pain for me :p)
+bevy = { version = "0.19.0-rc.2", default-features = false }
+rand = "0.9"
+
+[workspace.lints.clippy]
+# bevy supplies arguments to systems via dependency injection, so it's natural for systems to
+# request more than 7 arguments, which would undesirably trigger this lint
+too_many_arguments = "allow"
+# queries may access many components, which would undesirably trigger this lint
+type_complexity = "allow"

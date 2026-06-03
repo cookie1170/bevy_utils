@@ -1,0 +1,9 @@
+[package]
+name = "bevy_utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { workspace = true, features = ["bevy_log", "keyboard"] }
+bevy_utils_macros = { path = "../bevy_utils_macros/" }
+rand.workspace = true
