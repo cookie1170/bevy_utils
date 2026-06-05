@@ -285,6 +285,7 @@ dependencies = [
  "bevy_platform",
  "bevy_ptr",
  "bevy_reflect",
+ "bevy_state",
  "bevy_tasks",
  "bevy_time",
  "bevy_transform",
@@ -407,6 +408,33 @@ dependencies = [
  "quote",
  "syn",
  "uuid",
+]
+
+[[package]]
+name = "bevy_state"
+version = "0.19.0-rc.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5223226ca2ecbe56f156b0bb14dfad34b46039c99f151867cc256c7e711c4df7"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_platform",
+ "bevy_reflect",
+ "bevy_state_macros",
+ "bevy_utils 0.19.0-rc.2",
+ "log",
+ "variadics_please",
+]
+
+[[package]]
+name = "bevy_state_macros"
+version = "0.19.0-rc.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c52f21d1e9923daad5ecc56993f83f9e39482a957297a9265df0e3a6ab71e401"
+dependencies = [
+ "bevy_macro_utils",
+ "quote",
+ "syn",
 ]
 
 [[package]]

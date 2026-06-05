@@ -11,9 +11,14 @@ unsynn! {
         Enum(KEnum)
     }
 
+    struct Attribute {
+        pound: Pound,
+        bracket_group: BracketGroup
+    }
+
     struct UntilDecl {
-        until_attrs: Vec<Cons<Except<Either<Cons<Pound, BracketGroup>, DeclKind>>, TokenTree>>,
-        attrs: Many<Cons<Pound, BracketGroup>>,
+        until_attrs: Vec<Cons<Except<Either<Attribute, DeclKind>>, TokenTree>>,
+        attrs: Many<Attribute>,
         until_decl: Vec<Cons<Except<DeclKind>, TokenTree>>,
     }
 
@@ -23,16 +28,9 @@ unsynn! {
         name: Ident,
         rest: Vec<TokenTree>,
     }
-
-    struct AttrInput {
-        group: Ident
-    }
 }
 
-fn output_err(
-    err: impl std::error::Error,
-    item: impl Into<TokenStream>,
-) -> proc_macro::TokenStream {
+fn output_err(err: impl ToString, item: impl Into<TokenStream>) -> proc_macro::TokenStream {
     let err = err.to_string();
     let mut out = item.into();
     out.extend([
@@ -77,7 +75,7 @@ pub fn group(
         }
     };
 
-    let AttrInput { group } = match AttrInput::parse(&mut attr) {
+    let group = match Ident::parse(&mut attr) {
         Ok(r) => r,
         Err(e) => {
             return output_err(e, item2);
@@ -101,4 +99,131 @@ pub fn group(
     ]);
 
     out.into()
+}
+
+unsynn! {
+    struct ComputedDecl {
+        until_enum: Vec<Cons<Except<KEnum>, TokenTree>>,
+        _enum: KEnum,
+        name: Ident,
+    }
+
+    struct NamedAttribute {
+        pound: Pound,
+        bracket: BracketGroupContaining<Cons<Ident, ParenthesisGroupContaining<Vec<TokenTree>>>>
+    }
+
+    struct Variant {
+        until_attr: Vec<Cons<Except<NamedAttribute>, TokenTree>>,
+        attr: NamedAttribute,
+        name: Ident,
+    }
+
+    struct ComputedInput {
+        decl: ComputedDecl,
+        variants: BraceGroupContaining<CommaDelimitedVec<Variant>>,
+    }
+}
+
+/// Make a computed state
+///
+/// # Example
+/// ```ignore
+/// #[derive(States, Debug, Hash, Default, PartialEq, Eq, Clone, Copy)]
+/// enum State {
+///     Something,
+///     SomethingElse,
+///     AnotherThing,
+/// }
+///
+/// #[computed(State)]
+/// enum Computed {
+///     #[pat(State::Something | State::SomethingElse)]
+///     Something,
+///     #[pat(State::AnotherThing)]
+///     Another,
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn computed(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let orig_item = item.clone();
+    let attr = TokenStream::from(attr);
+    let mut item = TokenStream::from(item).into_token_iter();
+
+    let ComputedInput {
+        decl: ComputedDecl {
+            until_enum,
+            _enum,
+            name,
+        },
+        variants: BraceGroupContaining { content: variants },
+    } = match item.parse() {
+        Ok(r) => r,
+        Err(e) => return output_err(e, orig_item),
+    };
+
+    let out = variants.into_iter().map(|v| {
+        if v.value.attr.bracket.content.first != "pat" {
+            return (
+                Err(format!(
+                    "Unexpected attribute {}, must be 'pat'",
+                    v.value.name
+                )),
+                Err(String::new()),
+            );
+        }
+
+        let name = v.value.name.into_token_stream();
+        let mut out_variant = v.value.until_attr.into_token_stream();
+        out_variant.extend([name.clone(), v.delimiter.into_token_stream()]);
+        let mut out_match = v
+            .value
+            .attr
+            .bracket
+            .content
+            .second
+            .content
+            .into_token_stream();
+        out_match.extend(["=>".parse().unwrap(), quote! { Some(Self::#name), }]);
+        (Ok(out_variant), Ok(out_match))
+    });
+
+    let (out_variants, out_match): (Vec<_>, Vec<_>) = out.unzip();
+    let (out_variants, out_match): (
+        std::result::Result<Vec<_>, String>,
+        std::result::Result<Vec<_>, String>,
+    ) = (
+        out_variants.into_iter().collect(),
+        out_match.into_iter().collect(),
+    );
+
+    let (out_variants, out_match) = match (out_variants, out_match) {
+        (Ok(v), Ok(m)) => (v, m),
+        (Err(e), _) => {
+            return output_err(e, orig_item);
+        }
+        _ => unreachable!(),
+    };
+
+    quote! {
+        #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+        #until_enum enum #name {
+            #{out_variants}
+        }
+
+        impl ::bevy::state::state::ComputedStates for #name {
+            type SourceStates = #attr;
+
+            fn compute(sources: Self::SourceStates) -> Option<Self> {
+                match sources {
+                    #{out_match}
+                    _ => None,
+                }
+            }
+        }
+    }
+    .into()
 }

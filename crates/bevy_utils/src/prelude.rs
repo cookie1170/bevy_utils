@@ -1,3 +1,4 @@
+pub use crate::computed::computed;
 pub use crate::exit_on::{self, ExitOn};
 pub use crate::group::group;
 pub use crate::maths::{self, FloatMaths, MiscMaths};
