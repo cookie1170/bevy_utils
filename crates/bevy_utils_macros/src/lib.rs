@@ -115,7 +115,7 @@ unsynn! {
 
     struct Variant {
         until_attr: Vec<Cons<Except<NamedAttribute>, TokenTree>>,
-        attr: NamedAttribute,
+        attrs: Vec<NamedAttribute>,
         name: Ident,
     }
 
@@ -165,48 +165,36 @@ pub fn computed(
         Err(e) => return output_err(e, orig_item),
     };
 
-    let out = variants.into_iter().map(|v| {
-        if v.value.attr.bracket.content.first != "pat" {
-            return (
-                Err(format!(
-                    "Unexpected attribute {}, must be 'pat'",
-                    v.value.name
-                )),
-                Err(String::new()),
-            );
+    let mut out_variants = vec![];
+    let mut out_matches = vec![];
+
+    for v in variants {
+        let mut pat = None;
+        for attr in v.value.attrs {
+            if attr.bracket.content.first != "pat" {
+                out_variants.push(attr.into_token_stream());
+                continue;
+            }
+
+            if pat.is_none() {
+                pat = Some(attr.bracket.content.second.content.into_token_stream());
+            } else {
+                return output_err("multiple #[pat] attributes", orig_item);
+            }
         }
+
+        let Some(pat) = pat else {
+            return output_err("expected #[pat] attribute with a pattern", orig_item);
+        };
 
         let name = v.value.name.into_token_stream();
         let mut out_variant = v.value.until_attr.into_token_stream();
         out_variant.extend([name.clone(), v.delimiter.into_token_stream()]);
-        let mut out_match = v
-            .value
-            .attr
-            .bracket
-            .content
-            .second
-            .content
-            .into_token_stream();
+        let mut out_match = pat;
         out_match.extend(["=>".parse().unwrap(), quote! { Some(Self::#name), }]);
-        (Ok(out_variant), Ok(out_match))
-    });
-
-    let (out_variants, out_match): (Vec<_>, Vec<_>) = out.unzip();
-    let (out_variants, out_match): (
-        std::result::Result<Vec<_>, String>,
-        std::result::Result<Vec<_>, String>,
-    ) = (
-        out_variants.into_iter().collect(),
-        out_match.into_iter().collect(),
-    );
-
-    let (out_variants, out_match) = match (out_variants, out_match) {
-        (Ok(v), Ok(m)) => (v, m),
-        (Err(e), _) => {
-            return output_err(e, orig_item);
-        }
-        _ => unreachable!(),
-    };
+        out_variants.push(out_variant);
+        out_matches.push(out_match);
+    }
 
     quote! {
         #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
@@ -219,7 +207,7 @@ pub fn computed(
 
             fn compute(sources: Self::SourceStates) -> Option<Self> {
                 match sources {
-                    #{out_match}
+                    #{out_matches}
                     _ => None,
                 }
             }
